@@ -1,4 +1,4 @@
-function [A,B,C] = bilinear_construction(force, displacement, tolerance, animation)
+function [A,B,C,K_star] = bilinear_construction(displacement, force, tolerance, animation)
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                                                                         %
 % This function will construct a bilinear curve from a pushover capacity  %
@@ -6,7 +6,7 @@ function [A,B,C] = bilinear_construction(force, displacement, tolerance, animati
 % Input:                                                                  %
 % force = vector containing incremental force steps                       %
 % displacement = vector containing incremental displacement steps         %
-% tolerance = analysis tolerance (a good value is 1e-2)                   %
+% tolerance = analysis tolerance expressed in percentage (for example 1)  %
 % animation = 1 (print analysis iteration) / 2 (show the final results)   %
 % NOTE:                                                                   %
 % animation = 1 will save an iteration video named "bilinear_iter.mp4"    %
@@ -14,13 +14,13 @@ function [A,B,C] = bilinear_construction(force, displacement, tolerance, animati
 %                                                                         %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                                                                         %
-% OUTPUT: A,B,C three points that defines the bilinear curve.             %
-%                                                                         %
+% OUTPUT: A,B,C,K_star three points that defines the bilinear curve,      %
+%         and bilinear elastic stiffness                                  %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 %                                                                         %
 %                                               Gaetano Camarda           %
-%                                               V_1.0_BETA                %
-%       gaetano.camarda@outlook.com             31/05/2020                %
+%                                               V_1.5_BETA                %
+%       gaetano.camarda@outlook.com             23/06/2020                %
 %                                                                         %
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%$
 % Copyright 2020 Gaetano Camarda 
@@ -49,6 +49,8 @@ if animation == 1
     Fbu_star =  0.6 * max(FS(:,2));
     [minDistance, d_star_pos] = min(abs(FS(:,2)-ones(size(FS,1),1)*Fbu_star));
     d_star = FS(d_star_pos,1);
+    A = [d_star Fbu_star];
+    K_star = A(1,2) / A(1,1);
     figure
     plot(FS(:,1),FS(:,2),'b');
     hold on;
@@ -64,37 +66,33 @@ if animation == 1
     set(gca,'XLim',[0 max(FS(:,1))*1.2],'YLim',[0 max(FS(:,2))*1.1]);
     frame(1) = getframe(gcf);
     for d = 2 : size(FS,1);
+
         t = d;
-        A = [d_star Fbu_star];
-        K_star = A(1,2) / A(1,1);
         r_1 = @(x) K_star * x;
-        A_r_1 = trapz(FS(1:d,1),r_1(FS(1:d,1)));
+        A_r_1 = trapz(FS(1:d,1),K_star * (FS(1:d,1)));
         A_C1 = trapz(FS(1:d,1),FS(1:d,2));
-        if A_C1 > A_r_1
-            A1 = A_C1-A_r_1;
-        else
-            A1 = -A_C1+A_r_1;   
-        end
-        A_C2 = trapz(FS(d:end,1),FS(d:end,2));
+        A1 = A_C1 - A_r_1;
+        
+        A_C2 = trapz(FS(d-1:end,1),FS(d-1:end,2));
         [minDistance, a_pos] = min(abs(FS(:,2)-ones(size(FS,1),1)*r_1(FS(d,1))));
-        A_r_2 = trapz(FS(d:end,1),ones(size(FS(d:end,1),1),1)*FS(a_pos,2));
-        if A_C2 > A_r_2
-            A2 = A_C2-A_r_2;
-        else
-            A2 = -A_C2+A_r_2;
+        A_r_2 = trapz(FS(d-1:end,1),ones(size(FS(d-1:end,1),1),1)*FS(a_pos,2));
+          
+        A2 = A_C2 - A_r_2;
+        save_A(d,:) = [A1 A2];
+
+         perc_A1 = (abs(A1) / (abs(A1)+abs(A2))) * 100;
+         perc_A2 = (abs(A2) / (abs(A1)+abs(A2))) * 100;
+        if A2 < A1
+            else if perc_A2 - perc_A1 < tol
+                break
+            end
+        end
+        if A1 < A2
+            else if perc_A1 - perc_A2 < tol
+                break
+            end
         end
 
-        if A2 < A1
-            else if abs(A2 - A1) < tol
-                break
-            end
-        end
-        
-        if A1 < A2
-            else if abs(A1 - A2) < tol
-                break
-            end
-        end
     addpoints(curve,FS(d,1),r_1(FS(d,1)));
     d_y = FS(d,1);
     pb = plot(d_y,FS(a_pos,2),'-o','MarkerEdgeColor','r');
@@ -149,40 +147,40 @@ if animation == 2
             clear FS_temp
         end
     end
-    Fbu_star =  0.6 * max(FS(:,2));
-    [minDistance, d_star_pos] = min(abs(FS(:,2)-ones(size(FS,1),1)*Fbu_star));
-    d_star = FS(d_star_pos,1);
-    for d = 2 : size(FS,1);
+Fbu_star =  0.6 * max(FS(:,2));
+[minDistance, d_star_pos] = min(abs(FS(:,2)-ones(size(FS,1),1)*Fbu_star));
+d_star = FS(d_star_pos,1);
+A = [d_star Fbu_star];
+K_star = A(1,2) / A(1,1);
+        
+     for d = 2 : size(FS,1);
+
         t = d;
-        A = [d_star Fbu_star];
-        K_star = A(1,2) / A(1,1);
         r_1 = @(x) K_star * x;
-        A_r_1 = trapz(FS(1:d,1),r_1(FS(1:d,1)));
+        A_r_1 = trapz(FS(1:d,1),K_star * (FS(1:d,1)));
         A_C1 = trapz(FS(1:d,1),FS(1:d,2));
-        if A_C1 > A_r_1
-            A1 = A_C1-A_r_1;
-        else
-            A1 = -A_C1+A_r_1;
-        end
-        A_C2 = trapz(FS(d:end,1),FS(d:end,2));
+        A1 = A_C1 - A_r_1;
+        
+        A_C2 = trapz(FS(d-1:end,1),FS(d-1:end,2));
         [minDistance, a_pos] = min(abs(FS(:,2)-ones(size(FS,1),1)*r_1(FS(d,1))));
-        A_r_2 = trapz(FS(d:end,1),ones(size(FS(d:end,1),1),1)*FS(a_pos,2));
-        if A_C2 > A_r_2
-            A2 = A_C2-A_r_2;
-        else
-            A2 = -A_C2+A_r_2;
-        end
+        A_r_2 = trapz(FS(d-1:end,1),ones(size(FS(d-1:end,1),1),1)*FS(a_pos,2));
+          
+        A2 = A_C2 - A_r_2;
+        save_A(d,:) = [A1 A2];
+
+         perc_A1 = (abs(A1) / (abs(A1)+abs(A2))) * 100;
+         perc_A2 = (abs(A2) / (abs(A1)+abs(A2))) * 100;
         if A2 < A1
-            else if abs(A2 - A1) < tol
+            else if perc_A2 - perc_A1 < tol
                 break
             end
         end
         if A1 < A2
-            else if abs(A1 - A2) < tol
+            else if perc_A1 - perc_A2 < tol
                 break
             end
         end
-    end
+end
     figure
     plot([0,FS(d,1)],[0,r_1(FS(d,1))],'r','LineWidth',2);
     hold on
@@ -228,40 +226,41 @@ if animation == 3
             clear FS_temp
         end
     end
-    Fbu_star =  0.6 * max(FS(:,2));
-    [minDistance, d_star_pos] = min(abs(FS(:,2)-ones(size(FS,1),1)*Fbu_star));
-    d_star = FS(d_star_pos,1);
-    for d = 2 : size(FS,1);
+Fbu_star =  0.6 * max(FS(:,2));
+[minDistance, d_star_pos] = min(abs(FS(:,2)-ones(size(FS,1),1)*Fbu_star));
+d_star = FS(d_star_pos,1);
+A = [d_star Fbu_star];
+K_star = A(1,2) / A(1,1);
+        
+     for d = 2 : size(FS,1);
+
         t = d;
-        A = [d_star Fbu_star];
-        K_star = A(1,2) / A(1,1);
         r_1 = @(x) K_star * x;
-        A_r_1 = trapz(FS(1:d,1),r_1(FS(1:d,1)));
+        A_r_1 = trapz(FS(1:d,1),K_star * (FS(1:d,1)));
         A_C1 = trapz(FS(1:d,1),FS(1:d,2));
-        if A_C1 > A_r_1
-            A1 = A_C1-A_r_1;
-        else
-            A1 = -A_C1+A_r_1;
-        end
-        A_C2 = trapz(FS(d:end,1),FS(d:end,2));
+        A1 = A_C1 - A_r_1;
+        
+        A_C2 = trapz(FS(d-1:end,1),FS(d-1:end,2));
         [minDistance, a_pos] = min(abs(FS(:,2)-ones(size(FS,1),1)*r_1(FS(d,1))));
-        A_r_2 = trapz(FS(d:end,1),ones(size(FS(d:end,1),1),1)*FS(a_pos,2));
-        if A_C2 > A_r_2
-            A2 = A_C2-A_r_2;
-        else
-            A2 = -A_C2+A_r_2;
-        end
+        A_r_2 = trapz(FS(d-1:end,1),ones(size(FS(d-1:end,1),1),1)*FS(a_pos,2));
+          
+        A2 = A_C2 - A_r_2;
+        save_A(d,:) = [A1 A2];
+
+         perc_A1 = (abs(A1) / (abs(A1)+abs(A2))) * 100;
+         perc_A2 = (abs(A2) / (abs(A1)+abs(A2))) * 100;
         if A2 < A1
-            else if abs(A2 - A1) < tol
+            else if perc_A2 - perc_A1 < tol
                 break
             end
         end
         if A1 < A2
-            else if abs(A1 - A2) < tol
+            else if perc_A1 - perc_A2 < tol
                 break
             end
         end
-    end
+     end
+    d_y = FS(d,1);
 end
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%% END
 
